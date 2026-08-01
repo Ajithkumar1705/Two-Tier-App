@@ -42,16 +42,16 @@ pipeline {
         }
 
         stage('Deploy to App Server') {
-            steps {
-                sshagent(credentials: ['app-server-ssh-key']) {
-                    sh '''
-                        ssh -o StrictHostKeyChecking=no ubuntu@13.232.46.104 \
-                        "docker pull ${IMAGE_NAME}:latest && \
-                         docker-compose -f /home/ubuntu/two-tier-app/docker-compose.yml up -d --no-deps app"
-                    '''
-                }
-            }
+    steps {
+        sshagent(credentials: ['app-server-ssh-key']) {
+            sh '''
+                ssh -o StrictHostKeyChecking=no ubuntu@<app-server-ip> \
+                "docker pull ${IMAGE_NAME}:latest && \
+                 docker compose -f /home/ubuntu/two-tier-app/docker-compose.yml up -d --no-deps app"
+            '''
         }
+    }
+}
 
         stage('Verify Deployment') {
             steps {
