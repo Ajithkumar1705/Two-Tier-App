@@ -24,29 +24,9 @@ It's a two-tier architecture: a **Flask** application tier and a **MySQL** datab
 
 ## 🏗️ Architecture
 
-```
- Developer                                                                  
-     │  git push                                                           
-     ▼                                                                     
- GitHub Repo ──── webhook (push event) ────► Jenkins Pipeline               
-                                                   │                        
-                        ┌──────────────────────────┼──────────────────────┐
-                        │  Checkout → Unit Tests → Build Image → Push     │
-                        └──────────────────────────┼──────────────────────┘
-                                                   │  docker push
-                                                   ▼
-                                              Docker Hub (image registry)
-                                                   │  docker pull (via SSH)
-                                                   ▼
-                                          AWS EC2 — App Server
-                                    ┌──────────────────────────────┐
-                                    │  App container (Flask:5000)  │
-                                    │            │                 │
-                                    │            ▼                 │
-                                    │  DB container (MySQL 8.0)    │
-                                    │  + persistent Docker volume  │
-                                    └──────────────────────────────┘
-```
+<div align="center">
+<img src="screenshots/architecture.png" width="620" alt="Architecture diagram: developer pushes to GitHub, triggering Jenkins pipeline stages (checkout, tests, build, push, deploy), which pushes to Docker Hub and deploys via SSH to an app server running an app container and a database container">
+</div>
 
 Two separate EC2 instances are used: one dedicated to running **Jenkins**, one dedicated to running the **app itself** — mirroring how a real build server is kept separate from production infrastructure.
 
@@ -58,7 +38,7 @@ Two separate EC2 instances are used: one dedicated to running **Jenkins**, one d
 |---|---|
 | **Containerization** | Multi-stage-ready Dockerfile, non-root container user, `HEALTHCHECK`, persistent named volume for MySQL durability |
 | **CI/CD Automation** | Jenkins pipeline: Checkout → Unit Tests → Build → Push → Deploy → Verify — fully triggered by a GitHub webhook, zero manual steps |
-| **Infrastructure** | Two-tier AWS EC2 setup with security-group-to-security-group access rules (no open SSH to the world) |
+| **Infrastructure** | Two-tier AWS EC2 setup — SSH between servers scoped to security-group-to-security-group rules, not open to the world |
 | **Secrets Management** | Docker Hub and SSH credentials stored only in Jenkins' credential store — never hardcoded, never committed |
 | **Testing** | Unit tests with mocked database calls (`unittest.mock`), safe to run in a CI environment with no live database |
 | **Image Versioning** | Every build tagged with its Git commit SHA (not just `latest`) — always traceable back to the exact commit running in production |
@@ -130,14 +110,16 @@ Every build produces a uniquely tagged image — never just `latest` — so any 
 
 ## 🔐 Security Groups
 
-Access between the Jenkins server and the app server is scoped by **security-group-to-security-group** rules — not open to the internet, and not tied to a fragile IP allow-list that breaks when an instance restarts.
+SSH access from the Jenkins server to the app server is scoped by a **security-group-to-security-group** rule, not an IP allow-list — so it keeps working even if an instance restarts and gets a new IP, and it isn't open to the internet.
+
+Jenkins' webhook listener (port 8080) is a separate, deliberate exception: GitHub's webhook servers call in from a wide, non-fixed IP range, so that port is opened broadly rather than IP-restricted. For a single-VM learning setup this is an accepted trade-off; in production this would sit behind a reverse proxy or a narrower allow-list instead of a raw open port.
 
 <div align="center">
 <img src="screenshots/app-server-security-group.png" width="800" alt="App server security group inbound rules">
 <br><br>
 <img src="screenshots/jenkins-server-security-group.png" width="800" alt="Jenkins server security group inbound rules">
 
-<sub><i>Least-privilege access: SSH from Jenkins's security group only, no public exposure</i></sub>
+<sub><i>App server: SSH restricted to Jenkins's security group. Jenkins server: SSH restricted similarly, webhook port intentionally open for GitHub</i></sub>
 </div>
 
 ---
@@ -158,17 +140,15 @@ Cost-consciousness matters in real environments — after validating the full pi
 
 ## 🚧 Real Debugging Journey (Lessons Learned)
 
-This project wasn't "clone, deploy, done" — building it surfaced a string of genuinely real-world issues, each one debugged from first principles using logs rather than guesswork:
+This project wasn't "clone, deploy, done" — building it surfaced a string of genuinely real-world issues, each root-caused from actual log evidence (`journalctl`, `docker logs`, Jenkins console output) rather than trial-and-error:
 
-- **Jenkins signing key rotation** — Jenkins' apt repo key rotates roughly every 3 years; the install guide's key URL had already gone stale
-- **Java version drift** — Jenkins bumped its minimum required Java version; had to upgrade and reset the system default JVM
-- **Python package naming drift** — `python3-venv` doesn't exist as a generic package on newer Ubuntu; it's version-pinned (`python3.14-venv`)
-- **Docker Compose syntax migration** — modern Docker ships the `docker compose` plugin, not the legacy `docker-compose` binary
-- **Security group misconfiguration** — GitHub's webhook servers need broad inbound access; SSH between servers needs security-group-to-security-group rules, not IP allow-lists
-- **MySQL init-script race condition** — `init.sql` only runs on a truly empty volume; a partially-failed earlier deploy silently skipped schema creation
-- **Python import-time bug** — a "permanent fix" for the schema issue accidentally ran at *import* time, crashing unit tests that don't have a live database available
+- **GitHub webhook connectivity** — diagnosed via GitHub's delivery logs vs. Jenkins' own trigger config, isolating whether a failure was network-side or configuration-side
+- **SSH connectivity between servers** — traced a connection timeout down to a security group rule, verified with a direct manual SSH test before trusting Jenkins' credential setup
+- **Deploy path mismatches** — a Dockerfile and compose file split across the wrong directories caused a silent build-context failure; fixed by aligning the actual file layout with what the build expected
+- **MySQL init-script race condition** — `init.sql` only runs against a truly empty volume; a partially-failed earlier deploy had silently skipped schema creation, so the fix had to address the root cause, not just recreate the table once
+- **Python import-time bug** — a database self-healing fix accidentally ran at *import* time, crashing unit tests that don't have a live database available in the CI environment; fixed by scoping it to the app's actual startup path
 
-Each of these got root-caused with actual log evidence (`journalctl`, `docker logs`, Jenkins console output) rather than trial-and-error — which is, honestly, the real skill this project ended up demonstrating.
+Each of these was resolved by reading the actual error output carefully and testing one hypothesis at a time — which is, honestly, the real skill this project ended up demonstrating.
 
 ---
 
@@ -204,4 +184,9 @@ docker compose up --build
 Visit **http://localhost:5000**
 
 ---
+
+## 📄 License
+
+This project is for educational/portfolio purposes.
+
 </div>
