@@ -25,7 +25,7 @@ It's a two-tier architecture: a **Flask** application tier and a **MySQL** datab
 ## 🏗️ Architecture
 
 <div align="center">
-<img src="screenshots/architecture.png" width="620" alt="Architecture diagram: developer pushes to GitHub, triggering Jenkins pipeline stages (checkout, tests, build, push, deploy), which pushes to Docker Hub and deploys via SSH to an app server running an app container and a database container">
+<img src="screenshots/architecture.svg" width="620" alt="Architecture diagram: developer pushes to GitHub, triggering Jenkins pipeline stages (checkout, tests, build, push, deploy), which pushes to Docker Hub and deploys via SSH to an app server running an app container and a database container">
 </div>
 
 Two separate EC2 instances are used: one dedicated to running **Jenkins**, one dedicated to running the **app itself** — mirroring how a real build server is kept separate from production infrastructure.
