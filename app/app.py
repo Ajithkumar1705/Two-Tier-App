@@ -35,6 +35,19 @@ def index():
     rows = cursor.fetchall()
     conn.close()
     return render_template("index.html", rows=rows)
+def init_db():
+    conn = get_connection()
+    cursor = conn.cursor()
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS messages (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            name VARCHAR(255) NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
 
+init_db()
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=5000)
