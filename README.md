@@ -204,9 +204,4 @@ docker compose up --build
 Visit **http://localhost:5000**
 
 ---
-
-## 📄 License
-
-This project is for educational/portfolio purposes.
-
 </div>
